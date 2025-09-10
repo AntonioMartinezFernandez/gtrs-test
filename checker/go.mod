@@ -1,4 +1,4 @@
-module github.com/AntonioMartinezFernandez/gtrs-test/consumer
+module github.com/AntonioMartinezFernandez/gtrs-test/checker
 
 go 1.25.0
 

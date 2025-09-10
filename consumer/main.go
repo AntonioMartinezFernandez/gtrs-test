@@ -3,96 +3,118 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
-	"time"
 
 	"github.com/dranikpg/gtrs"
 	"github.com/redis/go-redis/v9"
 )
 
+const (
+	redisAddr         = "localhost:6379"
+	groupName         = "group-name"
+	streamKey         = "main-stream"
+	lastIDConsumerKey = "0-0"
+
+	consumerName = "consumer-name"
+)
+
 // Our type that is sent in the stream.
 type Event struct {
-	Kind     string
+	Name     string
 	Priority int
+	Time     string
 }
 
 func main() {
+	rootCtx := context.Background()
+
+	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     redisAddr,
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
-	ctx, cancelFunc := context.WithTimeout(context.Background(), 9*time.Second)
-	defer cancelFunc()
 
-	// Create three consumers
-	// - one on streams main-stream and other-stream
-	// - two on group g1 of stream group-stream
-	mainStream := gtrs.NewConsumer[Event](ctx, rdb,
-		gtrs.StreamIDs{"main-stream": "0-0", "other-stream": "0-0"},
+	// Ping to check the connection
+	if _, err := rdb.Ping(rootCtx).Result(); err != nil {
+		log.Fatalf("could not connect to Redis: %v", err)
+	}
+	log.Println("connected to Redis")
+
+	// Create consumer group
+	mainConsumerGroup := gtrs.NewGroupConsumer[Event](
+		rootCtx,
+		rdb,
+		groupName,
+		consumerName,
+		streamKey,
+		lastIDConsumerKey,
 	)
-	groupC1 := gtrs.NewGroupConsumer[Event](ctx, rdb, "g1", "c1", "group-stream", "0-0")
-	groupC2 := gtrs.NewGroupConsumer[Event](ctx, rdb, "g1", "c2", "group-stream", "0-0")
 
-	// Do some recovery when we exit.
+	// Do some recovery when we exit
 	defer func() {
-		// Lets see what acknowledgements were not delivered
-		remC1 := groupC1.Close()
-		remC2 := groupC2.Close()
-		fmt.Println("Those acks were not sent", remC1, remC2)
-
-		// Lets see where we stopped reading "main-stream" and "other-stream"
-		seenIds := mainStream.Close()
-		fmt.Println("Main stream reader stopped on", seenIds)
+		// Lets see where we stopped reading stream
+		seenIds := mainConsumerGroup.Close()
+		fmt.Println("main consumer group stream reader stopped on", seenIds)
 	}()
 
 	for {
-		var msg gtrs.Message[Event]                    // our message
-		var ackTarget *gtrs.GroupConsumer[Event] = nil // who to send the confimration
+		var msg gtrs.Message[Event] // our message
 
 		select {
 		// Consumers just close the stream on close or cancellation without
 		// sending any cancellation errors.
 		// So lets not forget checking the context ourselves
-		case <-ctx.Done():
+		case <-rootCtx.Done():
 			return
+
+		//! TODO: manage SIGTERM gracefully
+
 		// Block simultaneously on all consumers and wait for first to respond
-		case msg = <-mainStream.Chan():
-		case msg = <-groupC1.Chan():
-			ackTarget = groupC1
-		case msg = <-groupC2.Chan():
-			ackTarget = groupC2
+		case msg = <-mainConsumerGroup.Chan():
 		}
 
 		switch errv := msg.Err.(type) {
 		// This interface-nil comparison in safe. Consumers never return typed nil errors.
 		case nil:
-			fmt.Printf("Got event %v: %v, priority %v, from %v\n",
-				msg.ID, msg.Data.Kind, msg.Data.Priority, msg.Stream)
-
-			// Ack blocks only if the inner ackBuffer is full.
-			// Use it only inside the loop or from another goroutine with continous error processing.
-			if ackTarget != nil {
-				ackTarget.Ack(msg)
+			// Handle and ACK the message
+			err := handleMessage(msg)
+			if err != nil {
+				fmt.Printf("error handling message: %v\n", err)
+				continue
+				//! The `checker` process will be reprocessing the NO_ACK messages
 			}
-
-			// Lets sometimes send an acknowledgement to the wrong stream.
-			// Just for demonstration purposes to get a real AckError
-			if ackTarget == nil && rand.Float32() < 0.1 {
-				fmt.Println("Sending bad ack :)")
-				groupC1.Ack(msg)
-			}
+			mainConsumerGroup.Ack(msg)
 		case gtrs.ReadError:
 			// One of the consumers will stop. So lets stop altogether.
-			fmt.Fprintf(os.Stderr, "Read error! %v Exiting...\n", msg.Err)
+			fmt.Fprintf(os.Stderr, "read error! %v Exiting...\n", msg.Err)
 			return
 		case gtrs.AckError:
 			// We can identify the failed ack by stream & id
-			fmt.Printf("Ack failed %v-%v :( \n", msg.Stream, msg.ID)
+			fmt.Printf("ack failed %v-%v :( \n", msg.Stream, msg.ID)
 		case gtrs.ParseError:
 			// We can do something useful with errv.Data
-			fmt.Println("Parse failed: raw data: ", errv.Data)
+			fmt.Println("parse failed: raw data: ", errv.Data)
 		}
 	}
+}
+
+func handleMessage(msg gtrs.Message[Event]) error {
+	fmt.Printf(
+		"handling event %v: %v, priority %v, from %v\n",
+		msg.ID,
+		msg.Data.Name,
+		msg.Data.Priority,
+		msg.Stream,
+	)
+
+	// Create a random number between 0 and 10
+	randomNumber := rand.Intn(10)
+	if randomNumber < 2 {
+		return fmt.Errorf("message rejected due to random number: %d", randomNumber)
+	}
+
+	return nil
 }
