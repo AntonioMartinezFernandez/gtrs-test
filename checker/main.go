@@ -138,7 +138,7 @@ func checkAndProcessPending(ctx context.Context, rdb *redis.Client) {
 
 func handleMessage(msg gtrs.Message[Event]) error {
 	randomNumber := rand.Intn(10)
-	if randomNumber < 2 {
+	if randomNumber == 1 {
 		//! Randomly reject the message
 		return fmt.Errorf("message rejected due to random number: %d", randomNumber)
 	}

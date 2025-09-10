@@ -66,7 +66,7 @@ func main() {
 		}
 
 		log.Printf("published msg with ID: %s\n", id)
-		<-time.After(2000 * time.Millisecond)
+		<-time.After(200 * time.Millisecond)
 	}
 }
 

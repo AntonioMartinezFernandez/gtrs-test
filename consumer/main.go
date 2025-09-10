@@ -109,9 +109,9 @@ func handleMessage(msg gtrs.Message[Event]) error {
 
 	// Create a random number between 0 and 10
 	randomNumber := rand.Intn(10)
-	if randomNumber < 2 {
+	if randomNumber == 1 {
 		//! Randomly reject the message
-		return fmt.Errorf("message rejected")
+		return fmt.Errorf("message rejected ⛔️")
 	}
 
 	return nil
