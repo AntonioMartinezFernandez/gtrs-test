@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 
 	"github.com/dranikpg/gtrs"
 	"github.com/redis/go-redis/v9"
@@ -57,7 +56,7 @@ func main() {
 	defer func() {
 		// Lets see where we stopped reading stream
 		seenIds := mainConsumerGroup.Close()
-		fmt.Println("main consumer group stream reader stopped on", seenIds)
+		log.Println("main consumer group stream reader stopped on", seenIds)
 	}()
 
 	for {
@@ -82,38 +81,37 @@ func main() {
 			// Handle and ACK the message
 			err := handleMessage(msg)
 			if err != nil {
-				fmt.Printf("error handling message: %v\n", err)
+				log.Printf("error handling message %s: %v\n", msg.ID, err)
 				continue
 				//! The `checker` process will be reprocessing the NO_ACK messages
 			}
 			mainConsumerGroup.Ack(msg)
 		case gtrs.ReadError:
-			// One of the consumers will stop. So lets stop altogether.
-			fmt.Fprintf(os.Stderr, "read error! %v Exiting...\n", msg.Err)
+			// One of the consumers will stop, so lets stop altogether
+			log.Printf("read error! %v Exiting...\n", msg.Err)
 			return
 		case gtrs.AckError:
 			// We can identify the failed ack by stream & id
-			fmt.Printf("ack failed %v-%v :( \n", msg.Stream, msg.ID)
+			log.Printf("ack failed %v-%v :( \n", msg.Stream, msg.ID)
 		case gtrs.ParseError:
 			// We can do something useful with errv.Data
-			fmt.Println("parse failed: raw data: ", errv.Data)
+			log.Printf("parse failed: raw data: %v", errv.Data)
 		}
 	}
 }
 
 func handleMessage(msg gtrs.Message[Event]) error {
-	fmt.Printf(
-		"handling event %v: %v, priority %v, from %v\n",
+	log.Printf(
+		"handling event %v from %v\n",
 		msg.ID,
-		msg.Data.Name,
-		msg.Data.Priority,
 		msg.Stream,
 	)
 
 	// Create a random number between 0 and 10
 	randomNumber := rand.Intn(10)
 	if randomNumber < 2 {
-		return fmt.Errorf("message rejected due to random number: %d", randomNumber)
+		//! Randomly reject the message
+		return fmt.Errorf("message rejected")
 	}
 
 	return nil

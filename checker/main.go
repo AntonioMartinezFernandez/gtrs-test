@@ -122,7 +122,7 @@ func checkAndProcessPending(ctx context.Context, rdb *redis.Client) {
 
 		err := handleMessage(gtrsMessage)
 		if err != nil {
-			fmt.Printf("message %s wrongly processed ⛔️\n", msg.ID)
+			log.Printf("message %s not processed ⛔️\n", msg.ID)
 			continue
 		}
 
@@ -137,13 +137,13 @@ func checkAndProcessPending(ctx context.Context, rdb *redis.Client) {
 }
 
 func handleMessage(msg gtrs.Message[Event]) error {
-	// Create a random number between 0 and 10
 	randomNumber := rand.Intn(10)
 	if randomNumber < 2 {
+		//! Randomly reject the message
 		return fmt.Errorf("message rejected due to random number: %d", randomNumber)
 	}
 
-	fmt.Printf("message %s succesfully processed ✅\n", msg.ID)
+	log.Printf("message %s succesfully processed ✅\n", msg.ID)
 
 	return nil
 }

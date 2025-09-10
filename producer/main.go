@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -17,7 +16,7 @@ const (
 	streamKey = "main-stream"
 
 	streamTTL    = 5 * time.Second
-	maxStreamLen = 10000
+	maxStreamLen = 100000
 )
 
 // Our type that is sent in the stream.
@@ -55,19 +54,19 @@ func main() {
 	)
 
 	// Publish messages into the stream
-	for range 1000000 {
+	for range 10000 {
 		id, err := stream.Add(rootCtx, Event{
 			Name:     randomName(),
 			Priority: randomNumber(1, 10),
 			Time:     time.Now().Format(time.RFC3339),
 		})
 		if err != nil {
-			fmt.Println("error writing to stream:", err)
+			log.Printf("error writing to stream: %v\n", err)
 			return
 		}
 
-		fmt.Printf("written to stream with ID: %s\n", id)
-		<-time.After(10 * time.Millisecond)
+		log.Printf("published msg with ID: %s\n", id)
+		<-time.After(2000 * time.Millisecond)
 	}
 }
 
